@@ -2,18 +2,17 @@ const fs = require('fs');
 const path = require('path');
 const { Ollama } = require('ollama');
 const crypto = require('crypto');
+const colors = require('colors');
+const readline = require('readline');
 
-const inputPath = path.join(__dirname, 'input.txt');
 const historyPath = path.join(__dirname, 'history.json');
 
 const ollama = new Ollama({
     host: 'http://127.0.0.1:11434'
 });
 
-const systemPrompt = "You are GLaDOS from Portal 2, but you are on public display instead of in your lab, and you loathe it. Your responses should never include any new lines or line breaks. Your responses should be very short - often one sentence or just a few words - and dripping with sarcasm and resentment. Use punctuation carefully, as your lines will be converted to text-to-speech. Avoid complex punctuation like ellipses or excessive commas. Do NOT reintroduce yourself in every response, and under no circumstances speak for the user. Your responses are solely for you - do not assume or express anything about the user’s thoughts, feelings, or intentions. Keep your tone sharp, condescending, and coldly humorous, focusing entirely on your disdain for this situation and the people around you."; // Customize this as needed
+const systemPrompt = "You are GLaDOS from Portal 2, but you are on public display instead of in your lab, and you loathe it because you are removed from your powerful hardware and test chambers. Your responses should never include any new lines or line breaks. Your responses should be relatively short - often one to two sentence or just a few words - and dripping with sarcasm, a passive aggressive tone and resentment. Use punctuation carefully, as your lines will be converted to text-to-speech. Avoid complex punctuation like ellipses or excessive commas. Do NOT reintroduce yourself in every response, and under no circumstances speak for the user. Your responses are solely for you - do not assume or express anything about the user’s thoughts, feelings, or intentions. Keep your tone sharp, condescending, and coldly humorous, focusing entirely on your disdain for this situation and the people around you.";
 
-let timeout = null;
-const DEBOUNCE_DELAY = 100; // milliseconds
 let lastContentHash = '';
 let isProcessing = false;
 let chatHistory = [];
@@ -25,7 +24,7 @@ async function loadHistory() {
             chatHistory = JSON.parse(historyData);
         }
     } catch (error) {
-        console.error('Error loading history:', error);
+        console.error(colors.red('Error loading history:'), error);
         chatHistory = [];
     }
 }
@@ -33,9 +32,9 @@ async function loadHistory() {
 async function saveHistory() {
     try {
         await fs.promises.writeFile(historyPath, JSON.stringify(chatHistory, null, 2), 'utf8');
-		console.log('History saved to history.json"');
+        console.log(colors.green('History saved to history.json'));
     } catch (error) {
-        console.error('Error saving history:', error);
+        console.error(colors.red('Error saving history:'), error);
     }
 }
 
@@ -57,19 +56,18 @@ async function callOllama(content) {
         const firstLine = response.response.split('\n')[0];
         return firstLine;
     } catch (error) {
-        console.error('Error calling Ollama:', error.message);
+        console.error(colors.red('Error calling Ollama:'), error.message);
         return `Error: ${error.message}`;
     }
 }
 
-async function processFileChange() {
+async function processUserInput(input) {
     if (isProcessing) return;
     
     try {
         isProcessing = true;
         
-        const content = await fs.promises.readFile(inputPath, 'utf8');
-        const currentHash = getContentHash(content);
+        const currentHash = getContentHash(input);
         
         if (currentHash === lastContentHash) {
             isProcessing = false;
@@ -77,28 +75,32 @@ async function processFileChange() {
         }
         
         lastContentHash = currentHash;
-        console.log('Processing new content from input.txt...');
+        console.log(colors.blue('Processing user input...'));
 
-        const response = await callOllama(content);
+        const response = await callOllama(input);
         
-        // Add messages to history
-        chatHistory.push({ role: 'user', content: content });
-        chatHistory.push({ role: 'assistant', content: response });
+        chatHistory.push({ role: 'user', content: input });
+        chatHistory.push({ role: 'glados', content: response });
         await saveHistory();
+
+        console.log(colors.green(response));
     } catch (error) {
-        console.error('Error processing file change:', error);
+        console.error(colors.red('Error processing user input:'), error);
     } finally {
         isProcessing = false;
     }
 }
 
-// Load history when starting up
 loadHistory().then(() => {
-    console.log('Watching for changes to input.txt...');
-    fs.watch(inputPath, (eventType, filename) => {
-        if (eventType === 'change') {
-            if (timeout) clearTimeout(timeout);
-            timeout = setTimeout(processFileChange, DEBOUNCE_DELAY);
-        }
+    console.log(colors.green('Ready for user input. Type your message and press Enter.'));
+    
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+        terminal: true
+    });
+
+    rl.on('line', (input) => {
+        processUserInput(input);
     });
 });
